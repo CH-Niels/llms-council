@@ -2,7 +2,7 @@ import yaml
 import asyncio
 from autogen_ext.models.ollama import OllamaChatCompletionClient
 from autogen_agentchat.agents import AssistantAgent, UserProxyAgent
-from autogen_agentchat.teams import RoundRobinGroupChat
+from autogen_agentchat.teams import RoundRobinGroupChat, SelectorGroupChat
 from autogen_agentchat.conditions import MaxMessageTermination
 from autogen_agentchat.ui import Console
 
@@ -45,69 +45,100 @@ for key, agent_cfg in agents_cfg.items():
         model_client=model_client
     )
 
-# Termination condition
-termination = MaxMessageTermination(6)
-
-
-# Assign stages
+# Assign agents
 planner = agents["planner"]
 experts = [agents["expert1"], agents["expert2"]]
 critics = [agents["critic1"], agents["critic2"]]
 judge = agents["judge"]
 
-# Create group chat team
-group_chat_experts = RoundRobinGroupChat(
-    participants=experts,
-    termination_condition=termination,
-)
-
-group_chat_critics = RoundRobinGroupChat(
-    participants=critics,
-    termination_condition=termination,
-)
-
-# Helper function to stream messages and collect results
-async def stream_and_collect(stream):
-    """Stream messages to console and collect the final result and transcript"""
-    messages = []
-    transcript_lines = []
-    async for message in stream:
-        print(message)
-        messages.append(message)
-        content = message.content if hasattr(message, "content") else str(message)
-        transcript_lines.append(content)
-    last_msg = messages[-1] if messages else None
-    last_content = last_msg.content if hasattr(last_msg, "content") else str(last_msg) if last_msg else ""
-    transcript = "\n\n".join(transcript_lines)
-    return last_content, transcript
+# Council Manager
+class CouncilManager:
+    def __init__(self, planner, experts, critics, judge):
+        self.planner = planner
+        self.experts = experts
+        self.critics = critics
+        self.judge = judge
+        self.conversation_history = []
+        self.turn_counts = {}  # Track turns per agent
+        self.previous_speaker = None
+    
+    async def run_agent_turn(self, agent, context):
+        """Run a single agent turn and collect the response"""
+        print(f"\n=== {agent.name} ===")
+        result = await agent.run(task=context)
+        response = result.messages[-1].content if result.messages else ""
+        print(f"{response}\n")
+        self.conversation_history.append(f"{agent.name}: {response}")
+        self.previous_speaker = agent.name
+        
+        # Track turn count
+        self.turn_counts[agent.name] = self.turn_counts.get(agent.name, 0) + 1
+        
+        return response
+    
+    def get_available_agents(self, stage):
+        """Get agents that haven't reached their turn limit for the current stage"""
+        if stage == "experts":
+            available = [e for e in self.experts if self.turn_counts.get(e.name, 0) < 2]
+        elif stage == "critics":
+            available = [c for c in self.critics if self.turn_counts.get(c.name, 0) < 2]
+        else:
+            return []
+        
+        # Filter out previous speaker to avoid consecutive turns
+        if self.previous_speaker:
+            available = [a for a in available if a.name != self.previous_speaker]
+        
+        return available
+    
+    async def run(self, task):
+        """Run the full council process with controlled turns"""
+        self.conversation_history = [f"Task: {task}"]
+        self.turn_counts = {}
+        self.previous_speaker = None
+        
+        # Planner turn
+        context = task
+        await self.run_agent_turn(self.planner, context)
+        
+        # Experts - 2 turns each, alternating
+        while any(self.turn_counts.get(e.name, 0) < 2 for e in self.experts):
+            available = self.get_available_agents("experts")
+            if not available:
+                # If only previous speaker left, allow them
+                available = [e for e in self.experts if self.turn_counts.get(e.name, 0) < 2]
+            if available:
+                expert = available[0]  # Pick first available
+                context = "\n\n".join(self.conversation_history)
+                await self.run_agent_turn(expert, context)
+        
+        # Critics - 2 turns each, alternating
+        while any(self.turn_counts.get(c.name, 0) < 2 for c in self.critics):
+            available = self.get_available_agents("critics")
+            if not available:
+                # If only previous speaker left, allow them
+                available = [c for c in self.critics if self.turn_counts.get(c.name, 0) < 2]
+            if available:
+                critic = available[0]  # Pick first available
+                context = "\n\n".join(self.conversation_history)
+                await self.run_agent_turn(critic, context)
+        
+        # Judge final decision
+        context = "\n\n".join(self.conversation_history)
+        final_response = await self.run_agent_turn(self.judge, context)
+        
+        return final_response
 
 # Run chat asynchronously
 async def main():
     task = str(input("Enter the task for the agents: "))
-
-    print("=== Planner ===")
-    result_planner = await planner.run(task=task)
-    print(result_planner.messages[-1].content)
-    planner_content = result_planner.messages[-1].content
     
-    print("=== Experts ===")
-    stream_experts = group_chat_experts.run_stream(task=planner_content)
-    experts_content, experts_transcript = await stream_and_collect(stream_experts)
-    print(f"\nExperts final response: {experts_content}\n")
+    manager = CouncilManager(planner, experts, critics, judge)
+    final_decision = await manager.run(task)
     
-    print("=== Critics ===")
-    critics_task = (
-        "Critique the experts' reasoning process and final answer.\n\n"
-        f"Experts full transcript:\n{experts_transcript}\n\n"
-        f"Experts final answer:\n{experts_content}"
-    )
-    stream_critics = group_chat_critics.run_stream(task=critics_task)
-    critics_content, critics_transcript = await stream_and_collect(stream_critics)
-    print(f"\nCritics final response: {critics_content}\n")
-    
-    print("=== Judge ===")
-    result_judge = await judge.run_stream(task=f"Task: {task}\nExperts' solution: {experts_content}\nCritics' feedback: {critics_content}")
-    await Console(result_judge)
+    print(f"\n{'='*60}")
+    print(f"FINAL DECISION: {final_decision}")
+    print(f"{'='*60}")
 
 
 asyncio.run(main())
