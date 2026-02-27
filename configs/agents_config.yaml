@@ -12,7 +12,7 @@ llm_basic_settings:
 agents:
   planner:
     name: "Planner"
-    system_message: "Break problems into clear steps."
+    system_message: "Break problems into clear steps. Never take a side or give a final answer."
     llm_config:
       model: "mistral:latest"
       temperature: 0.25
