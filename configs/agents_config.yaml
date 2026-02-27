@@ -1,0 +1,54 @@
+llm_basic_settings:
+  base_url: "http://localhost:11434/v1"
+  api_key: "ollama"
+  model_info:
+    max_tokens: 8192
+    token_limit: 8192
+    context_window: 8192
+    json_output: true
+    vision: false
+    function_calling: false
+
+agents:
+  planner:
+    name: "Planner"
+    system_message: "Break problems into clear steps."
+    llm_config:
+      model: "mistral:latest"
+      temperature: 0.25
+      # Inherits base_url, api_key, model_info from llm_basic_settings
+
+  expert1:
+    name: "Expert"
+    system_message: "Provide detailed solutions to each step."
+    llm_config:
+      model: "mixtral:8x7b"
+      temperature: 0.7
+
+  expert2:
+    name: "Expert2"
+    system_message: "Provide detailed solutions to each step."
+    llm_config:
+      model: "deepseek-r1:8b"
+      temperature: 0.75
+
+  critic1:
+    name: "Critic"
+    system_message: "Critically evaluate and find flaws."
+    llm_config:
+      model: "llama3.1:latest"
+      temperature: 0.15
+
+  critic2:
+    name: "Critic2"
+    system_message: "Critically evaluate and find flaws."
+    llm_config:
+      model: "phi3:latest"
+      temperature: 0.2
+
+  judge:
+    name: "Judge"
+    system_message: "Decide the best final answer."
+    llm_config:
+      model: "llama3.1:latest"
+      temperature: 0.35
