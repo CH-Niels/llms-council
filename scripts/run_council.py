@@ -3,7 +3,7 @@ import asyncio
 from autogen_ext.models.ollama import OllamaChatCompletionClient
 from autogen_agentchat.agents import AssistantAgent, UserProxyAgent
 from autogen_agentchat.teams import RoundRobinGroupChat, SelectorGroupChat
-from autogen_agentchat.conditions import MaxMessageTermination
+from autogen_agentchat.conditions import TextMentionTermination
 from autogen_agentchat.ui import Console
 
 from check_ollama import ensure_ollama
@@ -16,6 +16,7 @@ with open("configs/agents_config.yaml", "r") as f:
 
 llm_basic = cfg["llm_basic_settings"]
 agents_cfg = cfg["agents"]
+selector_model_cfg = cfg["selector_model"]
 
 agents = {}
 
@@ -45,100 +46,73 @@ for key, agent_cfg in agents_cfg.items():
         model_client=model_client
     )
 
-# Assign agents
-planner = agents["planner"]
-experts = [agents["expert1"], agents["expert2"]]
-critics = [agents["critic1"], agents["critic2"]]
-judge = agents["judge"]
+# Create model client for the selector (group manager)
+selector_model_client = OllamaChatCompletionClient(
+    model=selector_model_cfg.get("model", "llama3.1:latest"),
+    base_url=llm_basic["base_url"],
+    api_key=llm_basic["api_key"],
+    temperature=selector_model_cfg.get("temperature", 0.1),
+    model_info=llm_basic["model_info"].copy()
+)
 
-# Council Manager
-class CouncilManager:
-    def __init__(self, planner, experts, critics, judge):
-        self.planner = planner
-        self.experts = experts
-        self.critics = critics
-        self.judge = judge
-        self.conversation_history = []
-        self.turn_counts = {}  # Track turns per agent
-        self.previous_speaker = None
-    
-    async def run_agent_turn(self, agent, context):
-        """Run a single agent turn and collect the response"""
-        print(f"\n=== {agent.name} ===")
-        result = await agent.run(task=context)
-        response = result.messages[-1].content if result.messages else ""
-        print(f"{response}\n")
-        self.conversation_history.append(f"{agent.name}: {response}")
-        self.previous_speaker = agent.name
-        
-        # Track turn count
-        self.turn_counts[agent.name] = self.turn_counts.get(agent.name, 0) + 1
-        
-        return response
-    
-    def get_available_agents(self, stage):
-        """Get agents that haven't reached their turn limit for the current stage"""
-        if stage == "experts":
-            available = [e for e in self.experts if self.turn_counts.get(e.name, 0) < 2]
-        elif stage == "critics":
-            available = [c for c in self.critics if self.turn_counts.get(c.name, 0) < 2]
-        else:
-            return []
-        
-        # Filter out previous speaker to avoid consecutive turns
-        if self.previous_speaker:
-            available = [a for a in available if a.name != self.previous_speaker]
-        
-        return available
-    
-    async def run(self, task):
-        """Run the full council process with controlled turns"""
-        self.conversation_history = [f"Task: {task}"]
-        self.turn_counts = {}
-        self.previous_speaker = None
-        
-        # Planner turn
-        context = task
-        await self.run_agent_turn(self.planner, context)
-        
-        # Experts - 2 turns each, alternating
-        while any(self.turn_counts.get(e.name, 0) < 2 for e in self.experts):
-            available = self.get_available_agents("experts")
-            if not available:
-                # If only previous speaker left, allow them
-                available = [e for e in self.experts if self.turn_counts.get(e.name, 0) < 2]
-            if available:
-                expert = available[0]  # Pick first available
-                context = "\n\n".join(self.conversation_history)
-                await self.run_agent_turn(expert, context)
-        
-        # Critics - 2 turns each, alternating
-        while any(self.turn_counts.get(c.name, 0) < 2 for c in self.critics):
-            available = self.get_available_agents("critics")
-            if not available:
-                # If only previous speaker left, allow them
-                available = [c for c in self.critics if self.turn_counts.get(c.name, 0) < 2]
-            if available:
-                critic = available[0]  # Pick first available
-                context = "\n\n".join(self.conversation_history)
-                await self.run_agent_turn(critic, context)
-        
-        # Judge final decision
-        context = "\n\n".join(self.conversation_history)
-        final_response = await self.run_agent_turn(self.judge, context)
-        
-        return final_response
+# Create SelectorGroupChat with built-in group manager
+termination = TextMentionTermination("TERMINATE")
+
+print(agents)
+
+group_chat = SelectorGroupChat(
+    participants=list(agents.values()),
+    allow_repeated_speaker=False,
+    selector_prompt = """
+You are a strict conversation controller.
+
+Available agents:
+{roles}
+
+Conversation so far:
+{history}
+
+Follow this REQUIRED speaking protocol:
+
+PHASE 1 → Planner
+- If the Planner has NOT spoken yet → SELECT Planner.
+
+PHASE 2 → Experts
+- After Planner has spoken → ONLY Experts may speak.
+- Ensure ALL Experts speak at least once before moving on.
+
+PHASE 3 → Critics
+- After ALL Experts have spoken → ONLY Critics may speak.
+- Ensure ALL Critics speak at least once.
+
+PHASE 4 → Judge
+- After ALL Critics have spoken → SELECT Judge.
+- Judge MUST be last and provide the final answer.
+
+STRICT RULES:
+- NEVER skip a phase.
+- NEVER select Judge early.
+- NEVER repeat the same agent if others in the phase have not spoken.
+- ALWAYS check history to determine who already spoke.
+
+Helpful logic:
+- Detect speakers by reading {history}.
+- If multiple candidates are valid → choose one who has NOT spoken yet.
+- If all required agents in a phase have spoken → move to next phase.
+
+Return ONLY the name of the next agent from {participants}.
+""",
+    model_client=selector_model_client,
+    termination_condition=termination
+)
 
 # Run chat asynchronously
 async def main():
     task = str(input("Enter the task for the agents: "))
     
-    manager = CouncilManager(planner, experts, critics, judge)
-    final_decision = await manager.run(task)
-    
-    print(f"\n{'='*60}")
-    print(f"FINAL DECISION: {final_decision}")
-    print(f"{'='*60}")
+    print("=== Council Discussion ===\n")
+    stream = group_chat.run_stream(task=task)
+    await Console(stream)
 
 
 asyncio.run(main())

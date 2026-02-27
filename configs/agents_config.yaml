@@ -2,6 +2,7 @@ llm_basic_settings:
   base_url: "http://localhost:11434/v1"
   api_key: "ollama"
   model_info:
+    family: "ollama"
     max_tokens: 8192
     token_limit: 8192
     context_window: 8192
@@ -9,14 +10,18 @@ llm_basic_settings:
     vision: false
     function_calling: false
 
+selector_model:
+  model: "llama3.1:latest"
+  temperature: 0.35
+
 agents:
+  
   planner:
     name: "Planner"
     system_message: "Break problems into clear steps. Never take a side or give a final answer."
     llm_config:
       model: "mistral:latest"
       temperature: 0.25
-      # Inherits base_url, api_key, model_info from llm_basic_settings
 
   expert1:
     name: "Expert"
@@ -36,7 +41,7 @@ agents:
     name: "Critic"
     system_message: "Critically evaluate and find flaws."
     llm_config:
-      model: "llama3.1:latest"
+      model: "mistral:latest"
       temperature: 0.15
 
   critic2:
@@ -48,7 +53,7 @@ agents:
 
   judge:
     name: "Judge"
-    system_message: "Decide the best final answer."
+    system_message: "Decide the best final answer. And end with the keyword TERMINATE"
     llm_config:
       model: "llama3.1:latest"
       temperature: 0.35
