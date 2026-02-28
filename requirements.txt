@@ -1,0 +1,16 @@
+# Python dependencies for LLLMS Council
+
+# YAML parsing
+pyyaml>=5.4.1
+
+# HTTP requests
+requests>=2.25.1
+
+# Logging and debugging
+logging  # Standard library, no version needed
+
+# Asynchronous programming
+asyncio  # Standard library, no version needed
+
+# Additional dependencies for Ollama integration
+ollama-sdk>=1.0.0
