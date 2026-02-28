@@ -3,6 +3,10 @@ import requests
 import time
 import sys
 import yaml
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def check_ollama():
     print("🔍 Checking if Ollama is running...")
@@ -12,15 +16,23 @@ def check_ollama():
             print("✅ Ollama is running")
             return True
         else:
+            logging.error(f"Unexpected status code from Ollama: {resp.status_code}")
             return False
-    except requests.ConnectionError:
+    except requests.ConnectionError as e:
+        logging.error(f"Connection error while checking Ollama: {e}")
         return False
 
 def start_ollama():
-    """Start Ollama using `ollama serve` in the background and wait until ready."""
     print("🚀 Attempting to start Ollama with `ollama serve`...")
-    # Start Ollama in the background
-    subprocess.Popen(["ollama", "serve"], stdout=sys.stdout, stderr=sys.stderr)
+    try:
+        subprocess.Popen(["ollama", "serve"], stdout=sys.stdout, stderr=sys.stderr)
+    except FileNotFoundError:
+        logging.error("`ollama` command not found. Ensure it is installed and in PATH.")
+        return False
+    except Exception as e:
+        logging.error(f"Failed to start Ollama: {e}")
+        return False
+
     # Wait a few seconds for Ollama to be ready
     for i in range(15):
         print(f"⏳ Waiting for Ollama to start... ({i + 1}/15)")
@@ -28,11 +40,10 @@ def start_ollama():
         if check_ollama():
             print("✅ Ollama is now running")
             return True
-    print("❌ Failed to start Ollama after multiple attempts.")
+    logging.error("Failed to start Ollama after multiple attempts.")
     return False
 
 def check_models_installed(config_path="configs/agents_config.yaml"):
-    """Check if all required models are installed based on the agents_config.yaml file."""
     print("🔍 Checking if all required models are installed...")
     try:
         with open(config_path, "r") as f:
@@ -47,22 +58,25 @@ def check_models_installed(config_path="configs/agents_config.yaml"):
                 resp = requests.get(f"http://localhost:11434/v1/models/{model}")
                 if resp.status_code != 200:
                     missing_models.append(model)
-            except requests.ConnectionError:
-                print("❌ Unable to connect to Ollama. Ensure it is running.")
+            except requests.ConnectionError as e:
+                logging.error(f"Unable to connect to Ollama while checking model {model}: {e}")
                 return False
 
         if missing_models:
-            print("❌ Missing models:", ", ".join(missing_models))
+            logging.error(f"Missing models: {', '.join(missing_models)}")
             return False
 
         print("✅ All models are installed.")
         return True
 
     except FileNotFoundError:
-        print(f"❌ Configuration file not found: {config_path}")
+        logging.error(f"Configuration file not found: {config_path}")
         return False
     except KeyError as e:
-        print(f"❌ Invalid configuration format. Missing key: {e}")
+        logging.error(f"Invalid configuration format. Missing key: {e}")
+        return False
+    except yaml.YAMLError as e:
+        logging.error(f"Error parsing YAML configuration: {e}")
         return False
 
 def ensure_ollama():

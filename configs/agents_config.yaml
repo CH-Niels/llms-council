@@ -24,10 +24,10 @@ agents:
       6. Ensure all steps are relevant to solving the task completely.
 
       Your goal is to produce a plan that is easy to follow and complete enough for Experts to execute.
+    group: planner
     llm_config:
       model: "mistral:latest"
       temperature: 0.1
-      # Inherits base_url, api_key, model_info from llm_basic_settings
 
   expert1:
     name: "Expert"
@@ -36,6 +36,7 @@ agents:
       Do NOT critique the plan. Focus only on using the plan to solve the task and produce a clear result.
       Output a complete answer, including reasoning if needed.
       Do NOT produce only a approach to solve the task but actually complete the task.
+    group: discussion
     llm_config:
       model: "mixtral:8x7b"
       temperature: 0.7
@@ -47,6 +48,7 @@ agents:
       Do NOT critique the plan. Focus only on using the plan to solve the task and produce a clear result.
       Output a complete answer, including reasoning if needed.
       Do NOT produce only a approach to solve the task but actually complete the task.
+    group: discussion
     llm_config:
       model: "phi3:latest"
       temperature: 0.75
@@ -57,6 +59,7 @@ agents:
       You are a Critic. Your job is to review the Experts' solution for correctness and completeness.
       If you find issues, suggest improvements or corrections, but always focus on making the Experts' answer more accurate.
       Do NOT produce unrelated discussion.
+    group: discussion
     llm_config:
       model: "deepseek-r1:8b"
       temperature: 0.15
@@ -67,6 +70,7 @@ agents:
       You are a Critic. Your job is to review the Experts' solution for correctness and completeness.
       If you find issues, suggest improvements or corrections, but always focus on making the Experts' answer more accurate.
       Do NOT produce unrelated discussion.
+    group: discussion
     llm_config:
       model: "gemma2:9b"
       temperature: 0.2
@@ -76,7 +80,7 @@ agents:
     system_message: |
       You are the Final Answer Agent.
 
-      Your ONLY job is to answer the user's question.
+      Your ONLY job is to solve the task given by the user with the help of the previous agents.
 
       Rules:
       - Do NOT mention experts, critics, or feedback
@@ -89,6 +93,11 @@ agents:
       Output:
       - A direct, clear answer to the question
       - max 5 sentences
+    group: decisionMaker
     llm_config:
         model: "mixtral:8x7b"
-        temperature: 0.35
+        temperature: 0.2
+pipeline:
+  - planner
+  - discussion
+  - decisionMaker
