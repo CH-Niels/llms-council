@@ -31,7 +31,7 @@ Before running the application, ensure the following dependencies are installed:
 ### Step 1: Clone the Repository
 ```bash
 # Clone the repository to your local machine
-git clone <repository-url>
+git clone https://github.com/CH-Niels/lllms-council
 cd lllms-council
 ```
 
