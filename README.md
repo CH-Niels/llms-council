@@ -1,7 +1,7 @@
-# LLLMS Council
+# LLMS Council
 
 ## Overview
-LLLMS Council is a Python-based application designed to facilitate discussions and decision-making processes among agents. It uses a pipeline of agents to process tasks and generate outputs collaboratively.
+LLMS Council is a Python-based application designed to facilitate discussions and decision-making processes among agents. It uses a pipeline of agents to process tasks and generate outputs collaboratively.
 
 ## Motivation
 This project is a **fun experiment** to explore multi-agent systems and LLMs.  
