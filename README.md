@@ -31,8 +31,8 @@ Before running the application, ensure the following dependencies are installed:
 ### Step 1: Clone the Repository
 ```bash
 # Clone the repository to your local machine
-git clone https://github.com/CH-Niels/lllms-council
-cd lllms-council
+git clone https://github.com/CH-Niels/llms-council.git
+cd llms-council
 ```
 
 ### Step 2: Install Python Dependencies
