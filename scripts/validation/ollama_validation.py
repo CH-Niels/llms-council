@@ -80,8 +80,8 @@ def check_models_installed(config_path="configs/agents_config.yaml"):
         return False
 
 def ensure_ollama():
-    if not check_models_installed():
-        sys.exit(1)
     if not check_ollama():
         if not start_ollama():
             sys.exit(1)
+    if not check_models_installed():
+        sys.exit(1)
